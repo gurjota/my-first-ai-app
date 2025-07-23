@@ -1,16 +1,17 @@
-import React, { useState, useEffect, useRef } from 'react';
-
 // Main App component
 const App = () => {
-    const [json1, setJson1] = useState('');
-    const [json2, setJson2] = useState('');
-    const [diffLines1, setDiffLines1] = useState([]);
-    const [diffLines2, setDiffLines2] = useState([]);
-    const [error, setError] = useState('');
+    // Removed: import React, { useState, useEffect, useRef } from 'react';
+    // Use React.useState, React.useEffect, React.useRef directly when React is loaded via CDN
+
+    const [json1, setJson1] = React.useState('');
+    const [json2, setJson2] = React.useState('');
+    const [diffLines1, setDiffLines1] = React.useState([]);
+    const [diffLines2, setDiffLines2] = React.useState([]);
+    const [error, setError] = React.useState('');
 
     // Refs for scrolling synchronization
-    const editor1Ref = useRef(null);
-    const editor2Ref = useRef(null);
+    const editor1Ref = React.useRef(null);
+    const editor2Ref = React.useRef(null);
 
     // Function to handle scroll synchronization
     const handleScroll = (scrolledEditorRef, otherEditorRef) => {
@@ -30,7 +31,7 @@ const App = () => {
     };
 
     // Effect to set up scroll listeners
-    useEffect(() => {
+    React.useEffect(() => {
         const editor1 = editor1Ref.current;
         const editor2 = editor2Ref.current;
 
