@@ -1,218 +1,237 @@
-// Main App component
-const App = () => {
-    // Removed: import React, { useState, useEffect, useRef } from 'react';
-    // Use React.useState, React.useEffect, React.useRef directly when React is loaded via CDN
-
-    const [json1, setJson1] = React.useState('');
-    const [json2, setJson2] = React.useState('');
-    const [diffLines1, setDiffLines1] = React.useState([]);
-    const [diffLines2, setDiffLines2] = React.useState([]);
-    const [error, setError] = React.useState('');
-
-    // Refs for scrolling synchronization
-    const editor1Ref = React.useRef(null);
-    const editor2Ref = React.useRef(null);
-
-    // Function to handle scroll synchronization
-    const handleScroll = (scrolledEditorRef, otherEditorRef) => {
-        if (scrolledEditorRef.current && otherEditorRef.current) {
-            const scrolledEditor = scrolledEditorRef.current;
-            const otherEditor = otherEditorRef.current;
-            const scrollTop = scrolledEditor.scrollTop;
-            const scrollHeight = scrolledEditor.scrollHeight;
-            const clientHeight = scrolledEditor.clientHeight;
-
-            // Calculate scroll percentage
-            const scrollPercentage = (scrollTop / (scrollHeight - clientHeight)) || 0;
-
-            // Apply to the other editor
-            otherEditor.scrollTop = scrollPercentage * (otherEditor.scrollHeight - otherEditor.clientHeight);
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JSON Diff Editor</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Inter font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
         }
-    };
-
-    // Effect to set up scroll listeners
-    React.useEffect(() => {
-        const editor1 = editor1Ref.current;
-        const editor2 = editor2Ref.current;
-
-        const syncScroll1 = () => handleScroll(editor1Ref, editor2Ref);
-        const syncScroll2 = () => handleScroll(editor2Ref, editor1Ref);
-
-        if (editor1) {
-            editor1.addEventListener('scroll', syncScroll1);
+        .json-editor-textarea {
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+            font-size: 0.875rem; /* Equivalent to text-sm */
+            line-height: 1.5;
+            tab-size: 2; /* Adjust tab size for better JSON readability */
         }
-        if (editor2) {
-            editor2.addEventListener('scroll', syncScroll2);
+        .diff-line-changed {
+            background-color: #fdd; /* Light red for changed lines */
         }
-
-        return () => {
-            if (editor1) {
-                editor1.removeEventListener('scroll', syncScroll1);
-            }
-            if (editor2) {
-                editor2.removeEventListener('scroll', syncScroll2);
-            }
-        };
-    }, [editor1Ref, editor2Ref]);
-
-
-    // Function to compare JSON inputs
-    const compareJson = () => {
-        setError(''); // Clear previous errors
-        setDiffLines1([]);
-        setDiffLines2([]);
-
-        let obj1, obj2;
-        try {
-            obj1 = JSON.parse(json1);
-        } catch (e) {
-            setError('Error parsing JSON 1: ' + e.message);
-            return;
+        .diff-line-added {
+            background-color: #dfd; /* Light green for added lines */
         }
-
-        try {
-            obj2 = JSON.parse(json2);
-        } catch (e) {
-            setError('Error parsing JSON 2: ' + e.message);
-            return;
+        .diff-line-removed {
+            background-color: #fdd; /* Light red for removed lines */
         }
-
-        // Pretty print JSON for line-by-line comparison
-        const prettyJson1 = JSON.stringify(obj1, null, 2);
-        const prettyJson2 = JSON.stringify(obj2, null, 2);
-
-        const lines1 = prettyJson1.split('\n');
-        const lines2 = prettyJson2.split('\n');
-
-        const newDiffLines1 = Array(lines1.length).fill(false);
-        const newDiffLines2 = Array(lines2.length).fill(false);
-
-        // Simple line-by-line comparison
-        // This approach highlights entire lines that differ.
-        // For a more granular diff (character-by-character), a diffing algorithm like Myers would be needed,
-        // which is more complex for a self-contained example without external libraries.
-        const maxLength = Math.max(lines1.length, lines2.length);
-
-        for (let i = 0; i < maxLength; i++) {
-            const line1 = lines1[i] || '';
-            const line2 = lines2[i] || '';
-
-            if (line1 !== line2) {
-                if (lines1[i] !== undefined) newDiffLines1[i] = true;
-                if (lines2[i] !== undefined) newDiffLines2[i] = true;
-            }
+        /* Ensure the root element takes full height */
+        #root {
+            min-height: 100vh;
         }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
 
-        setDiffLines1(newDiffLines1);
-        setDiffLines2(newDiffLines2);
-    };
+    <!-- React CDN -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Babel for JSX transformation in the browser -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    return (
-        <div className="min-h-screen bg-gray-100 font-sans text-gray-800 p-4 flex flex-col items-center">
-            {/* Tailwind CSS CDN */}
-            <script src="https://cdn.tailwindcss.com"></script>
-            {/* Inter font */}
-            <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-            <style>
-                {`
-                body {
-                    font-family: 'Inter', sans-serif;
+    <script type="text/babel">
+        // Main App component
+        const App = () => {
+            // IMPORTANT: No 'import React, { ... } from "react";' here.
+            // React and its hooks are available globally as 'React.useState', 'React.useEffect', etc.
+
+            const [json1, setJson1] = React.useState('');
+            const [json2, setJson2] = React.useState('');
+            const [diffLines1, setDiffLines1] = React.useState([]);
+            const [diffLines2, setDiffLines2] = React.useState([]);
+            const [error, setError] = React.useState('');
+
+            // Refs for scrolling synchronization
+            const editor1Ref = React.useRef(null);
+            const editor2Ref = React.useRef(null);
+
+            // Function to handle scroll synchronization
+            const handleScroll = (scrolledEditorRef, otherEditorRef) => {
+                if (scrolledEditorRef.current && otherEditorRef.current) {
+                    const scrolledEditor = scrolledEditorRef.current;
+                    const otherEditor = otherEditorRef.current;
+                    const scrollTop = scrolledEditor.scrollTop;
+                    const scrollHeight = scrolledEditor.scrollHeight;
+                    const clientHeight = scrolledEditor.clientHeight;
+
+                    // Calculate scroll percentage
+                    const scrollPercentage = (scrollTop / (scrollHeight - clientHeight)) || 0;
+
+                    // Apply to the other editor
+                    otherEditor.scrollTop = scrollPercentage * (otherEditor.scrollHeight - otherEditor.clientHeight);
                 }
-                .json-editor-textarea {
-                    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
-                    font-size: 0.875rem; /* Equivalent to text-sm */
-                    line-height: 1.5;
-                    tab-size: 2; /* Adjust tab size for better JSON readability */
+            };
+
+            // Effect to set up scroll listeners
+            React.useEffect(() => {
+                const editor1 = editor1Ref.current;
+                const editor2 = editor2Ref.current;
+
+                const syncScroll1 = () => handleScroll(editor1Ref, editor2Ref);
+                const syncScroll2 = () => handleScroll(editor2Ref, editor1Ref);
+
+                if (editor1) {
+                    editor1.addEventListener('scroll', syncScroll1);
                 }
-                .diff-line-changed {
-                    background-color: #fdd; /* Light red for changed lines */
+                if (editor2) {
+                    editor2.addEventListener('scroll', syncScroll2);
                 }
-                .diff-line-added {
-                    background-color: #dfd; /* Light green for added lines */
+
+                return () => {
+                    if (editor1) {
+                        editor1.removeEventListener('scroll', syncScroll1);
+                    }
+                    if (editor2) {
+                        editor2.removeEventListener('scroll', syncScroll2);
+                    }
+                };
+            }, [editor1Ref, editor2Ref]);
+
+
+            // Function to compare JSON inputs
+            const compareJson = () => {
+                setError(''); // Clear previous errors
+                setDiffLines1([]);
+                setDiffLines2([]);
+
+                let obj1, obj2;
+                try {
+                    obj1 = JSON.parse(json1);
+                } catch (e) {
+                    setError('Error parsing JSON 1: ' + e.message);
+                    return;
                 }
-                .diff-line-removed {
-                    background-color: #fdd; /* Light red for removed lines */
+
+                try {
+                    obj2 = JSON.parse(json2);
+                } catch (e) {
+                    setError('Error parsing JSON 2: ' + e.message);
+                    return;
                 }
-                `}
-            </style>
 
-            <h1 className="text-4xl font-bold text-gray-900 mb-8 mt-4">JSON Diff Editor</h1>
+                // Pretty print JSON for line-by-line comparison
+                const prettyJson1 = JSON.stringify(obj1, null, 2);
+                const prettyJson2 = JSON.stringify(obj2, null, 2);
 
-            <div className="w-full max-w-6xl bg-white p-6 rounded-xl shadow-lg flex flex-col items-center">
-                <div className="flex flex-col md:flex-row w-full space-y-6 md:space-y-0 md:space-x-6 mb-6">
-                    {/* JSON Input 1 */}
-                    <div className="flex-1">
-                        <label htmlFor="json1" className="block text-lg font-medium text-gray-700 mb-2">JSON Input 1</label>
-                        <textarea
-                            id="json1"
-                            className="json-editor-textarea w-full h-80 p-4 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition duration-150 ease-in-out resize-y"
-                            placeholder='Enter JSON here (e.g., {"name": "Alice", "age": 30})'
-                            value={json1}
-                            onChange={(e) => setJson1(e.target.value)}
-                        ></textarea>
-                    </div>
+                const lines1 = prettyJson1.split('\n');
+                const lines2 = prettyJson2.split('\n');
 
-                    {/* JSON Input 2 */}
-                    <div className="flex-1">
-                        <label htmlFor="json2" className="block text-lg font-medium text-gray-700 mb-2">JSON Input 2</label>
-                        <textarea
-                            id="json2"
-                            className="json-editor-textarea w-full h-80 p-4 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition duration-150 ease-in-out resize-y"
-                            placeholder='Enter JSON here (e.g., {"name": "Bob", "age": 31})'
-                            value={json2}
-                            onChange={(e) => setJson2(e.target.value)}
-                        ></textarea>
-                    </div>
-                </div>
+                const newDiffLines1 = Array(lines1.length).fill(false);
+                const newDiffLines2 = Array(lines2.length).fill(false);
 
-                {/* Compare Button */}
-                <button
-                    onClick={compareJson}
-                    className="px-8 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-200 ease-in-out transform hover:scale-105 mb-6"
-                >
-                    Compare JSONs
-                </button>
+                // Simple line-by-line comparison
+                const maxLength = Math.max(lines1.length, lines2.length);
 
-                {/* Error Message */}
-                {error && (
-                    <div className="w-full max-w-6xl bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative mb-6" role="alert">
-                        <strong className="font-bold">Error!</strong>
-                        <span className="block sm:inline ml-2">{error}</span>
-                    </div>
-                )}
+                for (let i = 0; i < maxLength; i++) {
+                    const line1 = lines1[i] || '';
+                    const line2 = lines2[i] || '';
 
-                {/* Diff Results */}
-                {(diffLines1.length > 0 || diffLines2.length > 0) && !error && (
-                    <div className="w-full max-w-6xl mt-4">
-                        <h2 className="text-2xl font-semibold text-gray-800 mb-4 text-center">Comparison Result</h2>
-                        <div className="flex flex-col md:flex-row w-full space-y-6 md:space-y-0 md:space-x-6">
-                            {/* Diff View 1 */}
-                            <div className="flex-1 bg-gray-50 p-4 rounded-lg border border-gray-200 overflow-auto max-h-96" ref={editor1Ref}>
-                                <pre className="json-editor-textarea whitespace-pre-wrap break-words">
-                                    {json1 ? JSON.stringify(JSON.parse(json1), null, 2).split('\n').map((line, index) => (
-                                        <div key={index} className={diffLines1[index] ? 'diff-line-changed' : ''}>
-                                            {line}
-                                        </div>
-                                    )) : <span className="text-gray-500">No JSON 1 to display.</span>}
-                                </pre>
+                    if (line1 !== line2) {
+                        if (lines1[i] !== undefined) newDiffLines1[i] = true;
+                        if (lines2[i] !== undefined) newDiffLines2[i] = true;
+                    }
+                }
+
+                setDiffLines1(newDiffLines1);
+                setDiffLines2(newDiffLines2);
+            };
+
+            return (
+                <div className="min-h-screen bg-gray-100 font-sans text-gray-800 p-4 flex flex-col items-center">
+                    <h1 className="text-4xl font-bold text-gray-900 mb-8 mt-4">JSON Diff Editor</h1>
+
+                    <div className="w-full max-w-6xl bg-white p-6 rounded-xl shadow-lg flex flex-col items-center">
+                        <div className="flex flex-col md:flex-row w-full space-y-6 md:space-y-0 md:space-x-6 mb-6">
+                            {/* JSON Input 1 */}
+                            <div className="flex-1">
+                                <label htmlFor="json1" className="block text-lg font-medium text-gray-700 mb-2">JSON Input 1</label>
+                                <textarea
+                                    id="json1"
+                                    className="json-editor-textarea w-full h-80 p-4 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition duration-150 ease-in-out resize-y"
+                                    placeholder='Enter JSON here (e.g., {"name": "Alice", "age": 30})'
+                                    value={json1}
+                                    onChange={(e) => setJson1(e.target.value)}
+                                ></textarea>
                             </div>
 
-                            {/* Diff View 2 */}
-                            <div className="flex-1 bg-gray-50 p-4 rounded-lg border border-gray-200 overflow-auto max-h-96" ref={editor2Ref}>
-                                <pre className="json-editor-textarea whitespace-pre-wrap break-words">
-                                    {json2 ? JSON.stringify(JSON.parse(json2), null, 2).split('\n').map((line, index) => (
-                                        <div key={index} className={diffLines2[index] ? 'diff-line-changed' : ''}>
-                                            {line}
-                                        </div>
-                                    )) : <span className="text-gray-500">No JSON 2 to display.</span>}
-                                </pre>
+                            {/* JSON Input 2 */}
+                            <div className="flex-1">
+                                <label htmlFor="json2" className="block text-lg font-medium text-gray-700 mb-2">JSON Input 2</label>
+                                <textarea
+                                    id="json2"
+                                    className="json-editor-textarea w-full h-80 p-4 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition duration-150 ease-in-out resize-y"
+                                    placeholder='Enter JSON here (e.g., {"name": "Bob", "age": 31})'
+                                    value={json2}
+                                    onChange={(e) => setJson2(e.target.value)}
+                                ></textarea>
                             </div>
                         </div>
-                    </div>
-                )}
-            </div>
-        </div>
-    );
-};
 
-export default App;
+                        {/* Compare Button */}
+                        <button
+                            onClick={compareJson}
+                            className="px-8 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-200 ease-in-out transform hover:scale-105 mb-6"
+                        >
+                            Compare JSONs
+                        </button>
+
+                        {/* Error Message */}
+                        {error && (
+                            <div className="w-full max-w-6xl bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative mb-6" role="alert">
+                                <strong className="font-bold">Error!</strong>
+                                <span className="block sm:inline ml-2">{error}</span>
+                            </div>
+                        )}
+
+                        {/* Diff Results */}
+                        {(diffLines1.length > 0 || diffLines2.length > 0) && !error && (
+                            <div className="w-full max-w-6xl mt-4">
+                                <h2 className="text-2xl font-semibold text-gray-800 mb-4 text-center">Comparison Result</h2>
+                                <div className="flex flex-col md:flex-row w-full space-y-6 md:space-y-0 md:space-x-6">
+                                    {/* Diff View 1 */}
+                                    <div className="flex-1 bg-gray-50 p-4 rounded-lg border border-gray-200 overflow-auto max-h-96" ref={editor1Ref}>
+                                        <pre className="json-editor-textarea whitespace-pre-wrap break-words">
+                                            {json1 ? JSON.stringify(JSON.parse(json1), null, 2).split('\n').map((line, index) => (
+                                                <div key={index} className={diffLines1[index] ? 'diff-line-changed' : ''}>
+                                                    {line}
+                                                </div>
+                                            )) : <span className="text-gray-500">No JSON 1 to display.</span>}
+                                        </pre>
+                                    </div>
+
+                                    {/* Diff View 2 */}
+                                    <div className="flex-1 bg-gray-50 p-4 rounded-lg border border-gray-200 overflow-auto max-h-96" ref={editor2Ref}>
+                                        <pre className="json-editor-textarea whitespace-pre-wrap break-words">
+                                            {json2 ? JSON.stringify(JSON.parse(json2), null, 2).split('\n').map((line, index) => (
+                                                <div key={index} className={diffLines2[index] ? 'diff-line-changed' : ''}>
+                                                    {line}
+                                                </div>
+                                            )) : <span className="text-gray-500">No JSON 2 to display.</span>}
+                                        </pre>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        // Render the App component
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
