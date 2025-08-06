@@ -370,7 +370,7 @@
                 <h2>Upload Files to Scan</h2>
                 <p>Drag and drop files here or click to browse</p>
                 <p style="color: #6c757d; margin-top: 10px;">
-                    Supports: .js, .json, .py, .env, .yaml, .yml, .txt, .md, .config, .xml, .html, .css
+                    Supports: .js, .json, .py, .env, .yaml, .yml, .txt, .md, .config, .conf, .ini, .properties, .xml, .html, .css
                 </p>
                 
                 <div class="file-input-wrapper">
@@ -404,7 +404,7 @@
     </div>
 
     <script>
-        // Secret detection patterns (same as Python version)
+        // Secret detection patterns - Updated to match Python version exactly
         const secretPatterns = {
             'AWS Access Key': /AKIA[0-9A-Z]{16}/g,
             'AWS Secret Key': /[0-9a-zA-Z/+]{40}/g,
@@ -428,9 +428,11 @@
             'Generic API Key': /(?:api[_-]?key|apikey|secret[_-]?key|secretkey|access[_-]?token|accesstoken)["\'\s]*[=:]["\'\s]*[0-9a-zA-Z\-_/+=]{20,}/gi,
             'Password in URL': /[a-zA-Z][a-zA-Z0-9+.-]*:\/\/[a-zA-Z0-9%._-]+:[a-zA-Z0-9%._-]+@[a-zA-Z0-9.-]+/g,
             'Database Connection': /(mongodb|mysql|postgres|redis):\/\/[a-zA-Z0-9%._-]+:[a-zA-Z0-9%._-]+@[a-zA-Z0-9.-]+/g,
+            'Email with Password': /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}:[a-zA-Z0-9!@#$%^&*()_+\-=\[\]{}|;:,.<>?]+/g
         };
 
-        const falsePositives = [
+        // Updated false positive patterns to match Python version
+        const falsePositivePatterns = [
             /example\.com/i,
             /localhost/i,
             /127\.0\.0\.1/i,
@@ -442,7 +444,18 @@
             /fake[_-]?token/i,
             /<[^>]+>/,
             /\$\{[^}]+\}/,
-            /process\.env\.[A-Z_]+/i,
+            /process\.env\.[A-Z_]+/i
+        ];
+
+        // Additional false positive keywords
+        const falsePositiveKeywords = [
+            'placeholder', 'example', 'sample', 'demo', 'test', 'fake', 'dummy',
+            'your_', 'insert_', 'add_your', 'replace_', 'change_me'
+        ];
+
+        // Context indicators for false positives
+        const contextIndicators = [
+            'todo', 'fixme', 'note:', '//', '/*', '#', 'comment', 'description'
         ];
 
         let scanResults = [];
@@ -524,6 +537,7 @@
                 const lineNum = lineIndex + 1;
                 const trimmedLine = line.trim();
 
+                // Skip empty lines and comments (matching Python logic)
                 if (!trimmedLine || trimmedLine.startsWith('#') || 
                     trimmedLine.startsWith('//') || trimmedLine.startsWith('/*')) {
                     return;
@@ -533,14 +547,19 @@
                     const matches = line.match(pattern);
                     if (matches) {
                         matches.forEach(match => {
-                            if (!isLikelyFalsePositive(match, line)) {
+                            // Get context around the match (like Python version)
+                            const contextStart = Math.max(0, lineIndex - 1);
+                            const contextEnd = Math.min(lines.length, lineIndex + 2);
+                            const context = lines.slice(contextStart, contextEnd).join('\n');
+
+                            if (!isLikelyFalsePositive(match, context)) {
                                 findings.push({
                                     type: secretType,
                                     value: match,
                                     line: lineNum,
                                     file: filename,
                                     context: trimmedLine,
-                                    confidence: calculateConfidence(secretType, match)
+                                    confidence: calculateConfidence(secretType, match, context)
                                 });
                             }
                         });
@@ -555,13 +574,32 @@
             const textLower = text.toLowerCase();
             const contextLower = context.toLowerCase();
 
-            return falsePositives.some(pattern => 
-                pattern.test(textLower) || pattern.test(contextLower)
-            ) || ['placeholder', 'example', 'sample', 'demo', 'test', 'fake', 'dummy']
-                .some(word => textLower.includes(word) || contextLower.includes(word));
+            // Check against false positive patterns
+            for (const pattern of falsePositivePatterns) {
+                if (pattern.test(textLower) || pattern.test(contextLower)) {
+                    return true;
+                }
+            }
+
+            // Check for common placeholder values
+            for (const keyword of falsePositiveKeywords) {
+                if (textLower.includes(keyword) || contextLower.includes(keyword)) {
+                    return true;
+                }
+            }
+
+            // Check if it's just variable names or comments
+            for (const indicator of contextIndicators) {
+                if (contextLower.includes(indicator)) {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
-        function calculateConfidence(secretType, value) {
+        function calculateConfidence(secretType, value, context) {
+            // Match Python confidence calculation exactly
             const highConfidenceTypes = [
                 'AWS Access Key', 'AWS Secret Key', 'GitHub Token', 
                 'Google API Key', 'Stripe API Key', 'JWT Token'
@@ -596,18 +634,16 @@
                 resultsHeader.style.background = 'linear-gradient(135deg, #28a745, #20c997)';
                 resultsContent.innerHTML = `
                     <div class="no-secrets">
-                        🎉 Great job! No secrets were found in the scanned files.
-                        <br><br>
-                        Your code appears to be secure from exposed credentials.
+                        ✅ No secrets detected in the scanned files.
                     </div>
                 `;
             } else {
-                resultsHeader.innerHTML = `🚨 ${scanResults.length} Potential Secrets Found`;
+                resultsHeader.innerHTML = `🚨 SECRET SCAN REPORT - Found ${scanResults.length} potential secrets`;
                 resultsHeader.style.background = 'linear-gradient(135deg, #dc3545, #c82333)';
                 
                 let html = '<div class="secrets-found">';
                 
-                // Group by file
+                // Group by file (matching Python report format)
                 const fileGroups = {};
                 scanResults.forEach(finding => {
                     if (!fileGroups[finding.file]) {
@@ -617,21 +653,25 @@
                 });
 
                 for (const [file, findings] of Object.entries(fileGroups)) {
-                    html += `<h3 style="margin: 20px 0 10px 0; color: #495057;">📁 ${file}</h3>`;
+                    html += `<h3 style="margin: 20px 0 10px 0; color: #495057;">📁 File: ${file}</h3>`;
+                    html += `<div style="margin-left: 20px; border-bottom: 1px solid #ddd; padding-bottom: 10px;">`;
                     
                     findings.forEach(finding => {
                         html += `
                             <div class="secret-item">
-                                <div class="secret-type">🔍 ${finding.type}</div>
+                                <div class="secret-type">🔍 Type: ${finding.type}</div>
                                 <div class="secret-details">
-                                    <strong>Line:</strong> ${finding.line}<br>
-                                    <strong>Context:</strong> ${finding.context.substring(0, 100)}${finding.context.length > 100 ? '...' : ''}
-                                    ${finding.confidence === 'HIGH' ? `<br><strong>Value:</strong> ${finding.value.substring(0, 20)}***` : ''}
+                                    <strong>📍 Line:</strong> ${finding.line}<br>
+                                    <strong>🎯 Confidence:</strong> ${finding.confidence}<br>
+                                    <strong>💡 Context:</strong> ${finding.context.substring(0, 100)}${finding.context.length > 100 ? '...' : ''}
+                                    ${finding.confidence === 'HIGH' ? `<br><strong>⚠️ Value:</strong> ${finding.value.substring(0, 20)}***` : ''}
                                 </div>
                                 <span class="confidence ${finding.confidence.toLowerCase()}">${finding.confidence} RISK</span>
                             </div>
                         `;
                     });
+                    
+                    html += '</div>';
                 }
                 
                 html += '</div>';
@@ -645,14 +685,15 @@
         function downloadReport() {
             const timestamp = new Date().toISOString().split('T')[0];
             let report = `SECRET SCAN REPORT - ${timestamp}\n`;
-            report += '='.repeat(50) + '\n\n';
-            report += `Files Scanned: ${scannedFiles}\n`;
-            report += `Secrets Found: ${scanResults.length}\n`;
-            report += `High Risk: ${scanResults.filter(r => r.confidence === 'HIGH').length}\n\n`;
+            report += '='.repeat(60) + '\n\n';
 
             if (scanResults.length === 0) {
                 report += '✅ No secrets detected in the scanned files.\n';
             } else {
+                report += `🚨 SECRET SCAN REPORT - Found ${scanResults.length} potential secrets:\n`;
+                report += '='.repeat(60) + '\n\n';
+
+                // Group findings by file (matching Python format exactly)
                 const fileGroups = {};
                 scanResults.forEach(finding => {
                     if (!fileGroups[finding.file]) {
@@ -669,9 +710,9 @@
                         report += `  🔍 Type: ${finding.type}\n`;
                         report += `  📍 Line: ${finding.line}\n`;
                         report += `  🎯 Confidence: ${finding.confidence}\n`;
-                        report += `  💡 Context: ${finding.context}\n`;
+                        report += `  💡 Context: ${finding.context.substring(0, 100)}${finding.context.length > 100 ? '...' : ''}\n`;
                         if (finding.confidence === 'HIGH') {
-                            report += `  ⚠️  Value: ${finding.value.substring(0, 20)}***\n`;
+                            report += `  ⚠️ Value: ${finding.value.substring(0, 20)}***\n`;
                         }
                         report += '\n';
                     });
